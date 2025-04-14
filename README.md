@@ -23,8 +23,8 @@
 
 1. リポジトリをクローン
 ```bash
-git clone https://github.com/testusername/glue-mock.git
-cd glue-mock
+git clone https://github.com/te-adachi-dev/local-glue-emulation.git
+cd local-glue-emulation-main
 ```
 
 2. 環境のセットアップを実行
