@@ -24,7 +24,7 @@
 1. リポジトリをクローン
 ```bash
 git clone https://github.com/te-adachi-dev/local-glue-emulation.git
-cd local-glue-emulation-main
+cd local-glue-emulation
 ```
 
 2. 環境のセットアップを実行
