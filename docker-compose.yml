@@ -1,0 +1,92 @@
+version: '3'
+
+services:
+  glue-local:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: glue20250407
+    volumes:
+      - ./:/home/glue_user/workspace/
+      - ./jupyter_workspace:/home/glue_user/jupyter_workspace/
+      - ./data:/home/glue_user/workspace/data
+      - ./hive-data/warehouse:/opt/hive/warehouse
+    ports:
+      - "8888:8888"
+      - "4040:4040"
+      - "18080:18080"
+    environment:
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-dummy}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-dummy}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-dummy}
+      - AWS_REGION=${AWS_REGION:-ap-northeast-1}
+      - JUPYTER_ENABLE_LAB=yes
+    command: "/home/glue_user/jupyter/jupyter_start.sh"
+    depends_on:
+      - hive-metastore
+    privileged: true
+
+  mysql:
+    image: mysql:5.7
+    container_name: mysql_20250407
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=metastore_db
+      - MYSQL_USER=hive
+      - MYSQL_PASSWORD=hive
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./mysql-data:/var/lib/mysql
+    restart: always
+    command: --character-set-server=latin1 --collation-server=latin1_swedish_ci
+
+  hive-metastore:
+    build:
+      context: .
+      dockerfile: hive-metastore.Dockerfile
+    container_name: hive_metastore_20250407
+    ports:
+      - "9083:9083"
+    volumes:
+      - ./hive-data:/opt/hive/data
+      - ./hive-data/warehouse:/opt/hive/warehouse
+    environment:
+      - HADOOP_HOME=/opt/hadoop
+      - HIVE_HOME=/opt/hive
+    depends_on:
+      - mysql
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "bash", "-c", "nc -z localhost 9083"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    privileged: true
+
+  trino:
+    image: trinodb/trino:latest
+    container_name: trino_20250407
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./conf/trino-conf:/etc/trino
+      - ./trino-data:/data
+      - ./hive-data/warehouse:/opt/hive/warehouse
+    user: root
+    depends_on:
+      - hive-metastore
+    command: >
+      /bin/bash -c "
+        echo 'Waiting for Hive metastore to start...' &&
+        mkdir -p /data &&
+        chmod -R 777 /data &&
+        sleep 30 &&
+        /usr/lib/trino/bin/launcher run --etc-dir /etc/trino"
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    privileged: true
