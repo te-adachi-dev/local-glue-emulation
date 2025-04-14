@@ -1,1 +1,5 @@
 mysql-data/
+.dockerignore
+*.log
+trino-data/
+trino-data/
