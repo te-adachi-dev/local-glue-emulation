@@ -21,6 +21,7 @@ services:
       - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-dummy}
       - AWS_REGION=${AWS_REGION:-ap-northeast-1}
       - JUPYTER_ENABLE_LAB=yes
+      - DISABLE_SSL=true
     command: "/home/glue_user/jupyter/jupyter_start.sh"
     depends_on:
       - hive-metastore
@@ -81,12 +82,13 @@ services:
         echo 'Waiting for Hive metastore to start...' &&
         mkdir -p /data &&
         chmod -R 777 /data &&
-        sleep 30 &&
+        sleep 60 &&
         /usr/lib/trino/bin/launcher run --etc-dir /etc/trino"
     restart: on-failure
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "8080"]
-      interval: 30s
-      timeout: 10s
+      interval: 45s
+      timeout: 15s
       retries: 5
+      start_period: 120s
     privileged: true

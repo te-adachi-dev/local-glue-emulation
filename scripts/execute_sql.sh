@@ -10,12 +10,16 @@ fi
 QUERY="$1"
 OUTPUT_FILE="$2"
 
-# 出力ファイルの指定があるかどうかで処理を分岐
+# 出力ディレクトリの確認
+mkdir -p ./data/output/query_results
+
+# SQL実行（Hiveコンテナを使用）
+echo "Executing SQL query using Hive CLI..."
 if [ -n "$OUTPUT_FILE" ]; then
-    docker exec glue20250407 python /home/glue_user/workspace/tools/execute_sql.py \
-        --query "$QUERY" \
-        --output /home/glue_user/workspace/data/output/query_results/$OUTPUT_FILE
+    # 結果をファイルに保存
+    docker exec hive_metastore_20250407 /opt/hive/bin/hive -e "$QUERY" > ./data/output/query_results/$OUTPUT_FILE
+    echo "Results saved to ./data/output/query_results/$OUTPUT_FILE"
 else
-    docker exec glue20250407 python /home/glue_user/workspace/tools/execute_sql.py \
-        --query "$QUERY"
+    # 結果を表示
+    docker exec hive_metastore_20250407 /opt/hive/bin/hive -e "$QUERY"
 fi

@@ -1,0 +1,4 @@
+mac_address,connection_start,connection_end,access_point_id,signal_strength
+00:1A:2B:3C:4D:5E,2025-04-15 10:00:00,2025-04-15 10:30:00,AP_001,-65 dBm
+00:2B:3C:4D:5E:6F,2025-04-15 10:05:00,2025-04-15 10:45:00,AP_002,-70 dBm
+00:3C:4D:5E:6F:7A,2025-04-15 10:10:00,2025-04-15 11:00:00,AP_001,-60 dBm

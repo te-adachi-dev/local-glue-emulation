@@ -31,7 +31,8 @@ fi
 
 # Glueジョブの実行
 echo "Executing Glue job..."
-docker exec glue20250407 bash -c "cd /home/glue_user/workspace && python3 /home/glue_user/workspace/jobs/test_job_hive.py --database test_db_20250407 --table test_table" || echo "Failed to execute Glue job, but continuing..."
+# 修正：--JOB_NAME パラメータを追加
+docker exec glue20250407 bash -c "cd /home/glue_user/workspace && python3 /home/glue_user/workspace/jobs/test_job_hive.py --JOB_NAME local_test_job --database test_db_20250407 --table test_table" || echo "Failed to execute Glue job, but continuing..."
 
 echo "Job execution completed."
 
