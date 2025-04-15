@@ -23,13 +23,21 @@ Dockerコンテナを使用せず、PythonとPySparkだけでAWS Glueの機能�
 pip install pyspark==3.1.2 findspark pandas numpy pyarrow
 ```
 
-2. Windows環境の場合、Hadoopバイナリのセットアップ
+2. Hadoopバイナリのセットアップ
 ```bash
 # Hadoopバイナリを配置（例：C:\tools\hadoop-2.7.2）
 # 環境変数の設定
 setx HADOOP_HOME C:\tools\hadoop-2.7.2
 setx PATH "%PATH%;%HADOOP_HOME%\bin"
 ```
+3. JDKのセットアップ
+```bash
+# https://download.oracle.com/otn/java/jdk/11.0.26%2B7/720377fa814b4b4491dea5837af261de/jdk-11.0.26_windows-x64_bin.exe
+# 環境変数の設定
+setx /M JAVA_HOME "C:\Program Files\Java\jdk-11"
+setx /M Path "%JAVA_HOME%\bin;%Path%"
+```
+
 
 ## 使用方法
 
