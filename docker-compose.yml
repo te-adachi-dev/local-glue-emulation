@@ -79,10 +79,9 @@ services:
       - hive-metastore
     command: >
       /bin/bash -c "
-        echo 'Waiting for Hive metastore to start...' &&
         mkdir -p /data &&
         chmod -R 777 /data &&
-        sleep 60 &&
+        sleep 30 &&
         /usr/lib/trino/bin/launcher run --etc-dir /etc/trino"
     restart: on-failure
     healthcheck:
