@@ -32,7 +32,7 @@
 ### インストール
 
 ```bash
-git clone https://github.com/yourusername/local-glue-emulation.git
+git clone https://github.com/te-adachi-dev/local-glue-emulation.git
 cd local-glue-emulation
 ```
 
