@@ -39,8 +39,9 @@ services:
       - "3306:3306"
     volumes:
       - ./mysql-data:/var/lib/mysql
+      - ./init-mysql:/docker-entrypoint-initdb.d
     restart: always
-    command: --character-set-server=latin1 --collation-server=latin1_swedish_ci
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
 
   hive-metastore:
     build:
@@ -58,11 +59,6 @@ services:
     depends_on:
       - mysql
     restart: on-failure
-    healthcheck:
-      test: ["CMD", "bash", "-c", "nc -z localhost 9083"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
     privileged: true
 
   trino:
@@ -72,22 +68,30 @@ services:
       - "8080:8080"
     volumes:
       - ./conf/trino-conf:/etc/trino
-      - ./trino-data:/data
+      - ./trino-data/plugin:/usr/lib/trino/plugin
+      - ./trino-data/secrets-plugin:/usr/lib/trino/secrets-plugin
       - ./hive-data/warehouse:/opt/hive/warehouse
     user: root
     depends_on:
       - hive-metastore
     command: >
       /bin/bash -c "
-        mkdir -p /data &&
-        chmod -R 777 /data &&
+        mkdir -p /data/var &&
+        mkdir -p /tmp/trino &&
+        chmod -R 777 /data/var &&
+        chmod -R 777 /tmp/trino &&
+        ln -sfn /data/var /var/trino &&
+        # Hiveコネクタをダウンロードしてインストール
+        cd /usr/lib/trino/plugin &&
+        wget -q https://repo1.maven.org/maven2/io/trino/trino-hive/434/trino-hive-434.jar &&
+        wget -q https://repo1.maven.org/maven2/io/trino/trino-hive-hadoop2/434/trino-hive-hadoop2-434.jar &&
+        wget -q https://repo1.maven.org/maven2/io/trino/trino-iceberg/434/trino-iceberg-434.jar &&
+        mkdir -p hive &&
+        mv trino-hive-434.jar hive/ &&
+        mv trino-hive-hadoop2-434.jar hive/ &&
+        mkdir -p iceberg &&
+        mv trino-iceberg-434.jar iceberg/ &&
         sleep 30 &&
         /usr/lib/trino/bin/launcher run --etc-dir /etc/trino"
     restart: on-failure
-    healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "8080"]
-      interval: 45s
-      timeout: 15s
-      retries: 5
-      start_period: 120s
     privileged: true

@@ -8,12 +8,8 @@ CREATE EXTERNAL TABLE IF NOT EXISTS test_db_20250407.input_connection (
   `事業者` STRING,
   `yearmonth` INT
 )
-ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
-WITH SERDEPROPERTIES (
-  "separatorChar" = ",",
-  "quoteChar" = "\"",
-  "escapeChar" = "\\"
-)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ','
 STORED AS TEXTFILE
 LOCATION '/opt/hive/warehouse/input_connection'
 TBLPROPERTIES ('skip.header.line.count'='1');
@@ -38,12 +34,8 @@ CREATE EXTERNAL TABLE IF NOT EXISTS test_db_20250407.input_ap (
   `事業者` STRING,
   `yearmonth` INT
 )
-ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
-WITH SERDEPROPERTIES (
-  "separatorChar" = ",",
-  "quoteChar" = "\"",
-  "escapeChar" = "\\"
-)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ','
 STORED AS TEXTFILE
 LOCATION '/opt/hive/warehouse/input_ap'
 TBLPROPERTIES ('skip.header.line.count'='1');

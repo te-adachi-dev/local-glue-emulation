@@ -1,41 +1,47 @@
 #!/bin/bash
 
-# Trinoの設定フォルダを作成
-mkdir -p conf/trino-conf/catalog
+# Trinoの設定を準備するスクリプト
 
-# 必要な設定ファイルを作成
-cat > conf/trino-conf/node.properties << 'EOF'
-node.environment=test
-node.id=trino-coordinator
-node.data-dir=/data
+echo "Trinoの設定ファイルを準備しています..."
+
+# カタログディレクトリが存在するか確認
+if [ ! -d "./conf/trino-conf/catalog" ]; then
+  mkdir -p ./conf/trino-conf/catalog
+fi
+
+# Hiveカタログ設定
+cat > ./conf/trino-conf/catalog/hive.properties << EOF
+connector.name=hive-hadoop2
+hive.metastore.uri=thrift://hive-metastore:9083
+hive.non-managed-table-writes-enabled=true
+hive.collect-column-statistics-on-write=true
 EOF
 
-cat > conf/trino-conf/config.properties << 'EOF'
+# config.properties
+cat > ./conf/trino-conf/config.properties << EOF
 coordinator=true
 node-scheduler.include-coordinator=true
 http-server.http.port=8080
-discovery-server.enabled=true
 discovery.uri=http://localhost:8080
 EOF
 
-cat > conf/trino-conf/jvm.config << 'EOF'
+# jvm.config
+cat > ./conf/trino-conf/jvm.config << EOF
 -server
--Xmx1G
+-Xmx4G
+-XX:-UseBiasedLocking
 -XX:+UseG1GC
 -XX:G1HeapRegionSize=32M
--XX:+UseGCOverheadLimit
 -XX:+ExplicitGCInvokesConcurrent
 -XX:+HeapDumpOnOutOfMemoryError
 -XX:+ExitOnOutOfMemoryError
 EOF
 
-cat > conf/trino-conf/catalog/hive.properties << 'EOF'
-connector.name=hive
-hive.metastore.uri=thrift://hive-metastore:9083
-hive.allow-drop-table=true
-hive.allow-rename-table=true
+# node.properties
+cat > ./conf/trino-conf/node.properties << EOF
+node.environment=local
+node.id=trino-local
+node.data-dir=/data
 EOF
 
-# 必要なディレクトリを作成して権限を設定
-mkdir -p trino-data hive-data
-chmod -R 777 trino-data hive-data
+echo "Trinoの設定が完了しました。"

@@ -62,7 +62,24 @@ else
     exit 1
 fi
 
-# 6. DDLをHiveメタストアで実行
+# 6. データディレクトリの準備
+echo "データディレクトリを準備中..."
+for csv_file in ./data/input/csv/*.csv; do
+    table_name=$(basename "$csv_file" .csv)
+    echo "テーブル $table_name のデータを準備中..."
+    
+    # Glueコンテナ内のwarehouseディレクトリにデータをコピー
+    docker exec glue20250407 mkdir -p "/home/glue_user/workspace/data/warehouse/$table_name"
+    docker exec glue20250407 cp "/home/glue_user/workspace/data/input/csv/$(basename $csv_file)" "/home/glue_user/workspace/data/warehouse/$table_name/"
+    docker exec glue20250407 chmod -R 777 "/home/glue_user/workspace/data/warehouse/$table_name"
+    
+    # Hiveメタストアコンテナ内のwarehouseディレクトリにデータをコピー
+    docker exec hive_metastore_20250407 mkdir -p "/opt/hive/warehouse/$table_name"
+    docker cp "$csv_file" "hive_metastore_20250407:/opt/hive/warehouse/$table_name/"
+    docker exec hive_metastore_20250407 chmod -R 777 "/opt/hive/warehouse/$table_name"
+done
+
+# 7. DDLをHiveメタストアで実行
 echo "テーブル作成 DDL を実行中..."
 docker cp ./crawler/temp_ddl.hql hive_metastore_20250407:/opt/hive/temp_ddl.hql
 if ! docker exec hive_metastore_20250407 /opt/hive/bin/hive -f /opt/hive/temp_ddl.hql; then
@@ -71,9 +88,16 @@ if ! docker exec hive_metastore_20250407 /opt/hive/bin/hive -f /opt/hive/temp_dd
     exit 1
 fi
 
-# 7. 作成されたテーブル一覧の表示
+# 8. 作成されたテーブル一覧の表示
 echo "=== 作成されたテーブル一覧 ==="
-docker exec hive_metastore_20250407 /opt/hive/bin/hive -e "SHOW DATABASES; USE test_db_20250407; SHOW TABLES;"
+docker exec hive_metastore_20250407 /opt/hive/bin/hive -e "SHOW DATABASES; USE ${database_name:-test_db_20250407}; SHOW TABLES;"
+
+# 9. カラム名マッピング情報のコピー
+echo "カラム名マッピング情報をコピーしています..."
+if docker exec glue20250407 test -d /home/glue_user/column_mappings; then
+    docker cp glue20250407:/home/glue_user/column_mappings ./crawler/
+    echo "カラム名マッピング情報をホストにコピーしました: ./crawler/column_mappings/"
+fi
 
 echo "$(date '+%Y-%m-%d %H:%M:%S') - クローラー実行完了"
 echo ""
