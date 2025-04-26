@@ -1,8 +1,9 @@
 CREATE DATABASE IF NOT EXISTS test_db_20250407;
 
-CREATE EXTERNAL TABLE IF NOT EXISTS test_db_20250407.master_status (
-  column_0858 STRING,
-  column_c286 STRING
+CREATE EXTERNAL TABLE IF NOT EXISTS test_db_20250407.master_user_attribute (
+  column_a943 STRING,
+  column_c93e STRING,
+  column_fb57 STRING
 )
 ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
 WITH SERDEPROPERTIES (
@@ -11,7 +12,7 @@ WITH SERDEPROPERTIES (
   "escapeChar" = "\\"
 )
 STORED AS TEXTFILE
-LOCATION '/opt/hive/warehouse/master_status'
+LOCATION '/opt/hive/warehouse/master_user_attribute'
 TBLPROPERTIES ('skip.header.line.count'='1');
 
 CREATE EXTERNAL TABLE IF NOT EXISTS test_db_20250407.master_device_attribute (
@@ -76,10 +77,9 @@ STORED AS TEXTFILE
 LOCATION '/opt/hive/warehouse/input_ap'
 TBLPROPERTIES ('skip.header.line.count'='1');
 
-CREATE EXTERNAL TABLE IF NOT EXISTS test_db_20250407.master_user_attribute (
-  column_a943 STRING,
-  column_c93e STRING,
-  column_fb57 STRING
+CREATE EXTERNAL TABLE IF NOT EXISTS test_db_20250407.master_status (
+  column_0858 STRING,
+  column_c286 STRING
 )
 ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
 WITH SERDEPROPERTIES (
@@ -88,5 +88,5 @@ WITH SERDEPROPERTIES (
   "escapeChar" = "\\"
 )
 STORED AS TEXTFILE
-LOCATION '/opt/hive/warehouse/master_user_attribute'
+LOCATION '/opt/hive/warehouse/master_status'
 TBLPROPERTIES ('skip.header.line.count'='1');

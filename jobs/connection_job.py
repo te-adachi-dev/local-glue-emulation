@@ -15,18 +15,27 @@ from pyspark.sql.types import TimestampType, StringType
 
 # モック環境用の設定
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(os.path.dirname(BASE_DIR), "data")
-INPUT_DIR = os.path.join(DATA_DIR, "input", "csv")
-OUTPUT_DIR = os.path.join(DATA_DIR, "output", "connection_output")
-COLUMN_MAPPINGS_DIR = os.path.join(os.path.dirname(BASE_DIR), "crawler", "column_mappings")
+# Dockerコンテナ内での実行ディレクトリを考慮
+if os.path.exists('/home/glue_user/workspace'):
+    # コンテナ内での実行
+    DATA_DIR = '/home/glue_user/data'
+    INPUT_DIR = '/home/glue_user/data/input/csv'
+    OUTPUT_DIR = '/home/glue_user/data/output/connection_output'
+    COLUMN_MAPPINGS_DIR = '/home/glue_user/crawler/column_mappings'
+else:
+    # ローカルでの実行
+    DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(BASE_DIR)), "data")
+    INPUT_DIR = os.path.join(DATA_DIR, "input", "csv")
+    OUTPUT_DIR = os.path.join(DATA_DIR, "output", "connection_output")
+    COLUMN_MAPPINGS_DIR = os.path.join(os.path.dirname(os.path.dirname(BASE_DIR)), "crawler", "column_mappings")
 
 # 出力ディレクトリの作成
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # 引数処理のモック
 class MockArgs:
-    def __init__(self, yyyymm, job_name="connection_job", job_run_id="mock_run_123"):
-        self.YYYYMM = yyyymm
+    def __init__(self, yyyymm=None, job_name="connection_job", job_run_id="mock_run_123"):
+        self.YYYYMM = yyyymm if yyyymm else "202501"
         self.JOB_NAME = job_name
         self.JOB_RUN_ID = job_run_id
 
@@ -39,7 +48,11 @@ def create_spark_session(app_name: str) -> SparkSession:
 # モック用のgetResolvedOptions関数
 def getResolvedOptions(argv, args):
     # コマンドライン引数からパラメータを取得するモック
-    return MockArgs("202501")
+    yyyymm = None
+    for i, arg in enumerate(argv):
+        if arg == '--YYYYMM' and i+1 < len(argv):
+            yyyymm = argv[i+1]
+    return MockArgs(yyyymm=yyyymm)
 ####モック用変更ここまで###
 
 #####本物Ｇｌｕｅと共通コード####
@@ -60,6 +73,7 @@ def delete_existing_directory(dir_path):
 
 # ファイルの読み込み
 def load_csv(spark: SparkSession, file_path: str) -> pd.DataFrame:
+    print(f"CSVファイルを読み込み中: {file_path}")
     return spark.read.csv(file_path, header=True, inferSchema=True)
 
 # 属性置換処理
@@ -103,6 +117,21 @@ def process_dates(df):
     return df
 
 def main():
+    # 環境情報のデバッグ出力
+    print(f"現在の作業ディレクトリ: {os.getcwd()}")
+    print(f"入力ディレクトリ: {INPUT_DIR}")
+    print(f"出力ディレクトリ: {OUTPUT_DIR}")
+
+    # 入力ファイルの確認
+    print("入力ファイルの確認中...")
+    if not os.path.exists(INPUT_DIR):
+        logger.error(f"入力ディレクトリが存在しません: {INPUT_DIR}")
+        sys.exit(1)
+        
+    for file in os.listdir(INPUT_DIR):
+        if file.endswith(".csv"):
+            print(f"見つかったファイル: {file}")
+
     # Sparkセッションの作成
     spark = create_spark_session("ConnectionJob")
 
@@ -114,10 +143,16 @@ def main():
 
     # input_connectionの読み込み（CSVファイル）
     input_file = os.path.join(INPUT_DIR, "input_connection.csv")
+    print(f"入力ファイルパス: {input_file}")
+    if not os.path.exists(input_file):
+        logger.error(f"ファイルが存在しません: {input_file}")
+        sys.exit(1)
+
     df = spark.read.csv(input_file, header=True, inferSchema=True)
+    print(f"読み込んだカラム: {df.columns}")
 
     # 必須カラムチェック（フォーマットチェック）
-    input_column_list = ["APID", "利用開始日時", "利用者属性", "端末属性", "事業者"]
+    input_column_list = ["APID", "利用開始日時", "利用者属性", "端末属性", "事業者", "yearmonth"]
     existing_columns = df.columns
     expected_column_count = len(input_column_list)
     actual_column_count = len(existing_columns)
@@ -162,6 +197,11 @@ def main():
         logger.error(log_entry)
         sys.exit(1)
 
+    # 処理対象月のみに絞り込み
+    print(f"処理対象年月: {args.YYYYMM}")
+    df = df.filter(col("yearmonth") == args.YYYYMM)
+    print(f"絞り込み後のレコード数: {df.count()}")
+
     # 属性置換
     df = replace_attributes(df, df_user, df_device)
 
@@ -175,7 +215,9 @@ def main():
     delete_existing_directory(OUTPUT_DIR)
 
     # 出力前にデータフレーム内にデータが存在することをチェック
-    if df.count() == 0:
+    record_count = df.count()
+    print(f"出力レコード数: {record_count}")
+    if record_count == 0:
         error_message = "出力ファイルにヘッダー以外の情報が含まれていません。"
         log_entry = f"{{{datetime.now(pytz.timezone('Asia/Tokyo')).strftime('%Y/%m/%d %H:%M:%S')}, jobID:{args.JOB_RUN_ID}, Level:ERROR, Message:\"{error_message}\"}}"
         logger.error(log_entry)
@@ -187,7 +229,9 @@ def main():
     os.makedirs(output_dir, exist_ok=True)
     
     # データフレームを保存
-    df.write.option("compression", "snappy").csv(output_dir, mode="overwrite", header=True)
+    output_path = os.path.join(output_dir, "connection_data.csv")
+    df.toPandas().to_csv(output_path, index=False, encoding='utf-8')
+    print(f"ファイルを保存しました: {output_path}")
     
     logger.info("INFO: ファイル出力が完了しました")
 ####本物Ｇｌｕｅ共通コードここまで###

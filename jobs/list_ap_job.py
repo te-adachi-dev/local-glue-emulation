@@ -19,18 +19,27 @@ from pyspark.sql.types import StringType, DoubleType, StructType, StructField
 
 # モック環境用の設定
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(os.path.dirname(BASE_DIR), "data")
-INPUT_DIR = os.path.join(DATA_DIR, "input", "csv")
-OUTPUT_DIR = os.path.join(DATA_DIR, "output", "list_ap_output")
-COLUMN_MAPPINGS_DIR = os.path.join(os.path.dirname(BASE_DIR), "crawler", "column_mappings")
+# Dockerコンテナ内での実行ディレクトリを考慮
+if os.path.exists('/home/glue_user/workspace'):
+    # コンテナ内での実行
+    DATA_DIR = '/home/glue_user/data'
+    INPUT_DIR = '/home/glue_user/data/input/csv'
+    OUTPUT_DIR = '/home/glue_user/data/output/list_ap_output'
+    COLUMN_MAPPINGS_DIR = '/home/glue_user/crawler/column_mappings'
+else:
+    # ローカルでの実行
+    DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(BASE_DIR)), "data")
+    INPUT_DIR = os.path.join(DATA_DIR, "input", "csv")
+    OUTPUT_DIR = os.path.join(DATA_DIR, "output", "list_ap_output")
+    COLUMN_MAPPINGS_DIR = os.path.join(os.path.dirname(os.path.dirname(BASE_DIR)), "crawler", "column_mappings")
 
 # 出力ディレクトリの作成
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # 引数処理のモック
 class MockArgs:
-    def __init__(self, yyyymm, job_name="list_ap_job", job_run_id="mock_run_123"):
-        self.YYYYMM = yyyymm
+    def __init__(self, yyyymm=None, job_name="list_ap_job", job_run_id="mock_run_123"):
+        self.YYYYMM = yyyymm if yyyymm else "202501"
         self.JOB_NAME = job_name
         self.JOB_RUN_ID = job_run_id
 
@@ -79,14 +88,17 @@ class GlueContext:
         # Hiveメタストアの代わりにCSVファイルから読み込む
         if table_name == "input_ap":
             file_path = os.path.join(INPUT_DIR, f"{table_name}.csv")
-            df = self.spark_session.read.csv(file_path, header=True, inferSchema=True)
+            print(f"読み込みファイル: {file_path}")
+            df = spark.read.csv(file_path, header=True, inferSchema=True)
             return DynamicFrame(df, self, transformation_ctx)
+        return None
     
     def create_dynamic_frame_from_options(self, format_options, connection_type, format, connection_options, transformation_ctx):
         # マスターデータのCSVを読み込む
         if "master_status.csv" in str(connection_options):
             file_path = os.path.join(INPUT_DIR, "master_status.csv")
-            df = self.spark_session.read.csv(file_path, header=True, inferSchema=True)
+            print(f"読み込みファイル: {file_path}")
+            df = spark.read.csv(file_path, header=True, inferSchema=True)
             return DynamicFrame(df, self, transformation_ctx)
         return None
     
@@ -107,8 +119,14 @@ class GlueContext:
 # モック用のgetResolvedOptions関数
 def getResolvedOptions(argv, args):
     # コマンドライン引数からパラメータを取得するモック
-    # 実際の環境では適切に引数を解析する必要がある
-    return MockArgs("202501")
+    yyyymm = None
+    job_name = "list_ap_job"
+    for i, arg in enumerate(argv):
+        if arg == '--YYYYMM' and i+1 < len(argv):
+            yyyymm = argv[i+1]
+        elif arg == '--JOB_NAME' and i+1 < len(argv):
+            job_name = argv[i+1]
+    return MockArgs(yyyymm=yyyymm, job_name=job_name)
 
 # SelectFromCollectionのモック
 class SelectFromCollection:
@@ -258,6 +276,8 @@ def ConversionProcess(glueContext, dfc) -> DynamicFrameCollection:
     # DynamicFrameをDynamicFrameCollectionに変換して返す
     return DynamicFrameCollection({"transformed_dynamic_frame": transformed_dynamic_frame}, glueContext)
 
+
+
 # output_list_ap_backup
 def output_list_ap_backup(glueContext, dfc) -> DynamicFrameCollection:
     # DynamicFrameをDataFrameに変換
@@ -403,6 +423,11 @@ if __name__ == "__main__":
     # 引数解析
     args = getResolvedOptions(sys.argv, ['JOB_NAME', 'YYYYMM'])
     
+    # 環境情報のデバッグ出力
+    print(f"現在の作業ディレクトリ: {os.getcwd()}")
+    print(f"入力ディレクトリ: {INPUT_DIR}")
+    print(f"出力ディレクトリ: {OUTPUT_DIR}")
+    
     # Sparkコンテキスト設定
     spark = SparkSession.builder.appName("list_ap_job").getOrCreate()
     sc = spark.sparkContext
@@ -412,12 +437,18 @@ if __name__ == "__main__":
     
     # 入力ファイルパスを調整
     # CSVファイルの存在確認と名前の整合性を確保
+    print("入力ファイルの確認中...")
+    if not os.path.exists(INPUT_DIR):
+        logger.error(f"入力ディレクトリが存在しません: {INPUT_DIR}")
+        sys.exit(1)
+        
     input_files = {}
     for file in os.listdir(INPUT_DIR):
         if file.endswith(".csv"):
             # ファイル名からテーブル名を抽出（拡張子を除去）
             table_name = os.path.splitext(file)[0]
             input_files[table_name] = os.path.join(INPUT_DIR, file)
+            print(f"見つかったファイル: {file}")
     
     # 必要なデータの存在チェック
     required_files = ["input_ap", "master_status"]
@@ -425,157 +456,153 @@ if __name__ == "__main__":
         if not any(req_file in file for file in input_files):
             logger.error(f"必要なファイル {req_file}.csv が見つかりません")
             sys.exit(1)
-    
-    # カラムマッピング情報の読み込み（必要な場合）
-    column_mappings = {}
-    if os.path.exists(COLUMN_MAPPINGS_DIR):
-        for mapping_file in os.listdir(COLUMN_MAPPINGS_DIR):
-            if mapping_file.endswith("_mapping.csv"):
-                table_name = mapping_file.replace("_mapping.csv", "")
-                mapping_path = os.path.join(COLUMN_MAPPINGS_DIR, mapping_file)
-                column_mappings[table_name] = pd.read_csv(mapping_path)
     ####モック用変更ここまで###
     
     #####本物Ｇｌｕｅと共通コード####
     # ジョブの起動ログを記録
     print(f"{{{datetime.now(pytz.timezone('Asia/Tokyo')).strftime('%Y/%m/%d %H:%M:%S')}, JobID: {args.JOB_RUN_ID}, Level:INFO, Message:\"Start Glue Job\"}}")
 
-    # Script generated for node ap
-    ap_node = glueContext.create_dynamic_frame_from_catalog(database="input", table_name="input_ap", transformation_ctx="ap_node")
+    try:
+        # Script generated for node ap
+        ap_node = glueContext.create_dynamic_frame_from_catalog(database="input", table_name="input_ap", transformation_ctx="ap_node")
 
-    # Script generated for node status_master
-    status_master_node = glueContext.create_dynamic_frame_from_options(
-        format_options={"quoteChar": "\"", "withHeader": True, "separator": ",", "optimizePerformance": False},
-        connection_type="s3",
-        format="csv",
-        connection_options={"paths": ["master_status.csv"], "recurse": True},
-        transformation_ctx="status_master_node"
-    )
+        # Script generated for node status_master
+        status_master_node = glueContext.create_dynamic_frame_from_options(
+            format_options={"quoteChar": "\"", "withHeader": True, "separator": ",", "optimizePerformance": False},
+            connection_type="s3",
+            format="csv",
+            connection_options={"paths": ["master_status.csv"], "recurse": True},
+            transformation_ctx="status_master_node"
+        )
 
-    # Script generated for node Process Month
-    ProcessMonth_node = ProcessMonth(glueContext, DynamicFrameCollection({"ap_node": ap_node}, glueContext))
+        # Script generated for node Process Month
+        ProcessMonth_node = ProcessMonth(glueContext, DynamicFrameCollection({"ap_node": ap_node}, glueContext))
 
-    # Script generated for node Select From Collection
-    SelectFromCollection_node1 = SelectFromCollection.apply(dfc=ProcessMonth_node, key=list(ProcessMonth_node.keys())[0], transformation_ctx="SelectFromCollection_node1")
+        # Script generated for node Select From Collection
+        SelectFromCollection_node1 = SelectFromCollection.apply(dfc=ProcessMonth_node, key=list(ProcessMonth_node.keys())[0], transformation_ctx="SelectFromCollection_node1")
 
-    # Script generated for node Change Schema
-    ChangeSchema_node1 = ApplyMapping.apply(frame=SelectFromCollection_node1, mappings=[
-        ("APID", "string", "APID", "string"),
-        ("AP名称", "string", "AP名称", "string"),
-        ("設置場所名称", "string", "設置場所名称", "string"),
-        ("都道府県", "string", "都道府県", "string"),
-        ("市区町村", "string", "市区町村", "string"),
-        ("住所", "string", "住所", "string"),
-        ("補足情報", "string", "補足情報", "string"),
-        ("緯度", "double", "緯度", "double"),
-        ("経度", "double", "経度", "double"),
-        ("ステータス", "string", "ステータス", "string"),
-        ("利用開始日時", "string", "利用開始日時", "string"),
-        ("利用終了日時", "string", "利用終了日時", "string"),
-        ("カテゴリ", "string", "カテゴリ", "string"),
-        ("保有主体属性", "string", "保有主体属性", "string"),
-        ("施設属性", "string", "施設属性", "string"),
-        ("局属性", "string", "局属性", "string"),
-        ("事業者", "string", "事業者", "string"),
-        ("yearmonth", "string", "yearmonth", "string")
-    ], transformation_ctx="ChangeSchema_node1")
+        # Script generated for node Change Schema
+        ChangeSchema_node1 = ApplyMapping.apply(frame=SelectFromCollection_node1, mappings=[
+            ("APID", "string", "APID", "string"),
+            ("AP名称", "string", "AP名称", "string"),
+            ("設置場所名称", "string", "設置場所名称", "string"),
+            ("都道府県", "string", "都道府県", "string"),
+            ("市区町村", "string", "市区町村", "string"),
+            ("住所", "string", "住所", "string"),
+            ("補足情報", "string", "補足情報", "string"),
+            ("緯度", "double", "緯度", "double"),
+            ("経度", "double", "経度", "double"),
+            ("ステータス", "string", "ステータス", "string"),
+            ("利用開始日時", "string", "利用開始日時", "string"),
+            ("利用終了日時", "string", "利用終了日時", "string"),
+            ("カテゴリ", "string", "カテゴリ", "string"),
+            ("保有主体属性", "string", "保有主体属性", "string"),
+            ("施設属性", "string", "施設属性", "string"),
+            ("局属性", "string", "局属性", "string"),
+            ("事業者", "string", "事業者", "string"),
+            ("yearmonth", "string", "yearmonth", "string")
+        ], transformation_ctx="ChangeSchema_node1")
 
-    # Script generated for node Exception Handling1
-    ExceptionHandling1_node = ExceptionHandling1(glueContext, DynamicFrameCollection({"ChangeSchema_node1": ChangeSchema_node1}, glueContext))
+        # Script generated for node Exception Handling1
+        ExceptionHandling1_node = ExceptionHandling1(glueContext, DynamicFrameCollection({"ChangeSchema_node1": ChangeSchema_node1}, glueContext))
 
-    # Script generated for node Select From Collection
-    SelectFromCollection_node2 = SelectFromCollection.apply(dfc=ExceptionHandling1_node, key=list(ExceptionHandling1_node.keys())[0], transformation_ctx="SelectFromCollection_node2")
+        # Script generated for node Select From Collection
+        SelectFromCollection_node2 = SelectFromCollection.apply(dfc=ExceptionHandling1_node, key=list(ExceptionHandling1_node.keys())[0], transformation_ctx="SelectFromCollection_node2")
 
-    # Script generated for node Conversion Process
-    ConversionProcess_node = ConversionProcess(glueContext, DynamicFrameCollection({"SelectFromCollection_node2": SelectFromCollection_node2}, glueContext))
+        # Script generated for node Conversion Process
+        ConversionProcess_node = ConversionProcess(glueContext, DynamicFrameCollection({"SelectFromCollection_node2": SelectFromCollection_node2}, glueContext))
 
-    # Script generated for node Select From Collection
-    SelectFromCollection_node3 = SelectFromCollection.apply(dfc=ConversionProcess_node, key=list(ConversionProcess_node.keys())[0], transformation_ctx="SelectFromCollection_node3")
+        # Script generated for node Select From Collection
+        SelectFromCollection_node3 = SelectFromCollection.apply(dfc=ConversionProcess_node, key=list(ConversionProcess_node.keys())[0], transformation_ctx="SelectFromCollection_node3")
 
-    # Script generated for node Translate ap_ID & Status unification
-    SqlQuery0 = '''
-    select 
-        case 
-            when apid rlike '([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}' then 
-                regexp_replace(apid, '[-:]', '') 
-            else 
-                apid 
-        end as 管理ID,
-        apid as APID,
-        ap名称 as AP名称,
-        設置場所名称,
-        都道府県,
-        市区町村,
-        住所,
-        補足情報,
-        緯度,
-        経度,
-        COALESCE(master_status.共通ログステータス, 'その他') AS ステータス,
-        利用開始日時,
-        利用終了日時,
-        カテゴリ,
-        保有主体属性,
-        施設属性,
-        局属性,
-        yearmonth as 年月,
-        事業者
-    from ap_status
-    left outer join master_status
-    on ap_status.ステータス = master_status.各社ステータス
-    '''
-    Translateap_IDStatusunification_node = sparkSqlQuery(
-        glueContext,
-        query=SqlQuery0,
-        mapping={"ap_status": SelectFromCollection_node3, "master_status": status_master_node},
-        transformation_ctx="Translateap_IDStatusunification_node"
-    )
+        # Script generated for node Translate ap_ID & Status unification
+        SqlQuery0 = '''
+        select 
+            case 
+                when apid rlike '([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}' then 
+                    regexp_replace(apid, '[-:]', '') 
+                else 
+                    apid 
+            end as `管理ID`,
+            apid as `APID`,
+            `ap名称` as `AP名称`,
+            `設置場所名称`,
+            `都道府県`,
+            `市区町村`,
+            `住所`,
+            `補足情報`,
+            `緯度`,
+            `経度`,
+            COALESCE(master_status.`共通ログステータス`, 'その他') AS `ステータス`,
+            `利用開始日時`,
+            `利用終了日時`,
+            `カテゴリ`,
+            `保有主体属性`,
+            `施設属性`,
+            `局属性`,
+            yearmonth as `年月`,
+            `事業者`
+        from ap_status
+        left outer join master_status
+        on ap_status.`ステータス` = master_status.`各社ステータス`
+        '''
+        Translateap_IDStatusunification_node = sparkSqlQuery(
+            glueContext,
+            query=SqlQuery0,
+            mapping={"ap_status": SelectFromCollection_node3, "master_status": status_master_node},
+            transformation_ctx="Translateap_IDStatusunification_node"
+        )
 
-    # Script generated for node Exception Handling2
-    ExceptionHandling2_node = ExceptionHandling2(glueContext, DynamicFrameCollection({"Translateap_IDStatusunification_node": Translateap_IDStatusunification_node}, glueContext))
+        # Script generated for node Exception Handling2
+        ExceptionHandling2_node = ExceptionHandling2(glueContext, DynamicFrameCollection({"Translateap_IDStatusunification_node": Translateap_IDStatusunification_node}, glueContext))
 
-    # Script generated for node Select From Collection
-    SelectFromCollection_node4 = SelectFromCollection.apply(dfc=ExceptionHandling2_node, key=list(ExceptionHandling2_node.keys())[0], transformation_ctx="SelectFromCollection_node4")
+        # Script generated for node Select From Collection
+        SelectFromCollection_node4 = SelectFromCollection.apply(dfc=ExceptionHandling2_node, key=list(ExceptionHandling2_node.keys())[0], transformation_ctx="SelectFromCollection_node4")
 
-    # Script generated for node Change Schema
-    ChangeSchema_node2 = ApplyMapping.apply(frame=SelectFromCollection_node4, mappings=[
-        ("管理ID", "string", "管理ID", "string"),
-        ("APID", "string", "APID", "string"),
-        ("AP名称", "string", "AP名称", "string"),
-        ("設置場所名称", "string", "設置場所名称", "string"),
-        ("都道府県", "string", "都道府県", "string"),
-        ("市区町村", "string", "市区町村", "string"),
-        ("住所", "string", "住所", "string"),
-        ("補足情報", "string", "補足情報", "string"),
-        ("緯度", "double", "緯度", "double"),
-        ("経度", "double", "経度", "double"),
-        ("ステータス", "string", "ステータス", "string"),
-        ("利用開始日時", "string", "利用開始日時", "string"),
-        ("利用終了日時", "string", "利用終了日時", "string"),
-        ("カテゴリ", "string", "カテゴリ", "string"),
-        ("保有主体属性", "string", "保有主体属性", "string"),
-        ("施設属性", "string", "施設属性", "string"),
-        ("局属性", "string", "局属性", "string"),
-        ("年月", "string", "年月", "int"),
-        ("事業者", "string", "事業者", "string")
-    ], transformation_ctx="ChangeSchema_node2")
+        # Script generated for node Change Schema
+        ChangeSchema_node2 = ApplyMapping.apply(frame=SelectFromCollection_node4, mappings=[
+            ("管理ID", "string", "管理ID", "string"),
+            ("APID", "string", "APID", "string"),
+            ("AP名称", "string", "AP名称", "string"),
+            ("設置場所名称", "string", "設置場所名称", "string"),
+            ("都道府県", "string", "都道府県", "string"),
+            ("市区町村", "string", "市区町村", "string"),
+            ("住所", "string", "住所", "string"),
+            ("補足情報", "string", "補足情報", "string"),
+            ("緯度", "double", "緯度", "double"),
+            ("経度", "double", "経度", "double"),
+            ("ステータス", "string", "ステータス", "string"),
+            ("利用開始日時", "string", "利用開始日時", "string"),
+            ("利用終了日時", "string", "利用終了日時", "string"),
+            ("カテゴリ", "string", "カテゴリ", "string"),
+            ("保有主体属性", "string", "保有主体属性", "string"),
+            ("施設属性", "string", "施設属性", "string"),
+            ("局属性", "string", "局属性", "string"),
+            ("年月", "string", "年月", "int"),
+            ("事業者", "string", "事業者", "string")
+        ], transformation_ctx="ChangeSchema_node2")
 
-    # Script generated for node list_ap_table d2
-    list_ap_tabled2_node = output_list_ap_table(glueContext, DynamicFrameCollection({"ChangeSchema_node2": ChangeSchema_node2}, glueContext))
+        # Script generated for node list_ap_table d2
+        list_ap_tabled2_node = output_list_ap_table(glueContext, DynamicFrameCollection({"ChangeSchema_node2": ChangeSchema_node2}, glueContext))
 
-    # Script generated for node common_ap d2
-    common_apd2_node = output_common_ap(glueContext, DynamicFrameCollection({"ChangeSchema_node2": ChangeSchema_node2}, glueContext))
+        # Script generated for node common_ap d2
+        common_apd2_node = output_common_ap(glueContext, DynamicFrameCollection({"ChangeSchema_node2": ChangeSchema_node2}, glueContext))
 
-    # Script generated for node list_ap_backup d1
-    list_ap_backupd1_node = output_list_ap_backup(glueContext, DynamicFrameCollection({"ChangeSchema_node2": ChangeSchema_node2}, glueContext))
+        # Script generated for node list_ap_backup d1
+        list_ap_backupd1_node = output_list_ap_backup(glueContext, DynamicFrameCollection({"ChangeSchema_node2": ChangeSchema_node2}, glueContext))
 
-    # ジョブの終了ログを記録
-    print(f"{{{datetime.now(pytz.timezone('Asia/Tokyo')).strftime('%Y/%m/%d %H:%M:%S')}, JobID: {args.JOB_RUN_ID}, Level:INFO, Message:\"End Glue Job\"}}")
+        # ジョブの終了ログを記録
+        print(f"{{{datetime.now(pytz.timezone('Asia/Tokyo')).strftime('%Y/%m/%d %H:%M:%S')}, JobID: {args.JOB_RUN_ID}, Level:INFO, Message:\"End Glue Job\"}}")
+    except Exception as e:
+        logger.error(f"ジョブ実行中にエラーが発生しました: {str(e)}")
+        raise e
+    finally:
+        # ジョブのコミット
+        job.commit()
     ####本物Ｇｌｕｅ共通コードここまで###
 
     #####ここからモック用変更####
-    # ジョブのコミット
-    job.commit()
-    
     # 出力結果の表示
     print(f"ジョブが正常に完了しました。出力ディレクトリ: {OUTPUT_DIR}")
     ####モック用変更ここまで###
+
