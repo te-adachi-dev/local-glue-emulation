@@ -16,12 +16,33 @@ mkdir -p ./trino-data/etc
 mkdir -p ./trino-data/plugin
 mkdir -p ./trino-data/secrets-plugin
 mkdir -p ./trino-data/var
+mkdir -p ./jupyter_workspace
+
+# MySQL のデータディレクトリをクリーンアップ
+echo "   MySQL データディレクトリをクリーンアップ中..."
+sudo rm -rf ./mysql-data 2>/dev/null || rm -rf ./mysql-data
+mkdir -p ./mysql-data
 
 # 2. 権限設定
 echo "2. 権限を設定中..."
-chmod -R 777 ./data
-chmod -R 777 ./hive-data
-chmod -R 777 ./trino-data
+# すべての関連ディレクトリに対して権限を777に設定
+sudo chmod -R 777 ./data 2>/dev/null || chmod -R 777 ./data
+sudo chmod -R 777 ./hive-data 2>/dev/null || chmod -R 777 ./hive-data
+sudo chmod -R 777 ./trino-data 2>/dev/null || chmod -R 777 ./trino-data
+sudo chmod -R 777 ./mysql-data 2>/dev/null || chmod -R 777 ./mysql-data
+sudo chmod -R 777 ./jupyter_workspace 2>/dev/null || chmod -R 777 ./jupyter_workspace
+sudo chmod -R 777 ./crawler 2>/dev/null || chmod -R 777 ./crawler
+sudo chmod -R 777 ./conf 2>/dev/null || chmod -R 777 ./conf
+sudo chmod -R 777 ./jobs 2>/dev/null || chmod -R 777 ./jobs
+sudo chmod -R 777 ./scripts 2>/dev/null || chmod -R 777 ./scripts
+
+# 所有権の設定（オプション - 必要に応じてコメント解除）
+# echo "   所有権を設定中..."
+# CURRENT_USER=$(whoami)
+# sudo chown -R $CURRENT_USER:$CURRENT_USER ./data 2>/dev/null || echo "所有権の変更はスキップされました"
+# sudo chown -R $CURRENT_USER:$CURRENT_USER ./hive-data 2>/dev/null || echo "所有権の変更はスキップされました"
+# sudo chown -R $CURRENT_USER:$CURRENT_USER ./trino-data 2>/dev/null || echo "所有権の変更はスキップされました"
+# sudo chown -R $CURRENT_USER:$CURRENT_USER ./mysql-data 2>/dev/null || echo "所有権の変更はスキップされました"
 
 # 3. 既存のコンテナを停止・削除
 echo "3. 既存のコンテナを確認・停止中..."
@@ -78,6 +99,13 @@ while ! docker exec hive_metastore_20250407 nc -z localhost 9083 >/dev/null 2>&1
 done
 echo "   Hive Metastore の準備ができました。"
 
+# 追加の権限設定（コンテナ作成後のディレクトリに対して）
+echo "   コンテナ作成後のディレクトリ権限を設定中..."
+sudo chmod -R 777 ./data 2>/dev/null || chmod -R 777 ./data
+sudo chmod -R 777 ./hive-data 2>/dev/null || chmod -R 777 ./hive-data
+sudo chmod -R 777 ./trino-data 2>/dev/null || chmod -R 777 ./trino-data
+sudo chmod -R 777 ./mysql-data 2>/dev/null || chmod -R 777 ./mysql-data
+
 echo "6. コンテナの状態を確認中..."
 docker-compose ps
 
@@ -87,7 +115,7 @@ echo "====================================="
 echo ""
 echo "次のステップ:"
 echo "1. データを ./data/input/csv/ に配置してください"
-echo "2. ./run_crawler.sh を実行してテーブルを作成してください"
+echo "2. ./scripts/run_crawler.sh を実行してテーブルを作成してください"
 echo "3. Glueジョブを実行して処理を開始してください"
 echo ""
 echo "詳細な手順については README.md を参照してください"

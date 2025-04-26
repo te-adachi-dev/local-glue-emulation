@@ -76,6 +76,8 @@ services:
       - hive-metastore
     command: >
       /bin/bash -c "
+        apt-get update && 
+        apt-get install -y wget && 
         mkdir -p /data/var &&
         mkdir -p /tmp/trino &&
         chmod -R 777 /data/var &&
