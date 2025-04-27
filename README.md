@@ -61,8 +61,9 @@ docker-compose ps
 処理したいCSVなどのデータファイルを `./data/input/csv/` ディレクトリに配置します：
 
 ```bash
-# 例: サンプルCSVを配置
-cp /path/to/your/data/*.csv ./data/input/csv/
+# 作業ディレクトリに、データを配置しておく。
+# 以下コマンドで配置できる。
+cp *.csv ./data/input/csv/
 ```
 
 以下のデータ形式がサポートされています：
