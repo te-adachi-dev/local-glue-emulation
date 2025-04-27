@@ -1,0 +1,14 @@
+英語カラム名,元のカラム名
+rec_time_stamp,rec_time_stamp
+can_id,can_id
+message_type,message_type
+engine_rpm,engine_rpm
+vehicle_speed,vehicle_speed
+throttle_position,throttle_position
+brake_pressure,brake_pressure
+steering_angle,steering_angle
+ambient_temp,ambient_temp
+cabin_temp,cabin_temp
+humidity,humidity
+light_level,light_level
+rain_intensity,rain_intensity

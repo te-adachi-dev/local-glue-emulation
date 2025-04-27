@@ -2,9 +2,9 @@ FROM apache/hive:3.1.3
 
 USER root
 
-# 必要なパッケージのインストール
+# 必要なパッケージのインストール (mysql-clientの代わりにmariadb-clientを使用)
 RUN apt-get update && \
-    apt-get install -y wget netcat procps net-tools mysql-client && \
+    apt-get install -y wget netcat procps net-tools mariadb-client && \
     wget https://repo1.maven.org/maven2/mysql/mysql-connector-java/8.0.27/mysql-connector-java-8.0.27.jar -O /opt/hive/lib/mysql-connector-java-8.0.27.jar
 
 # 作業ディレクトリ作成と権限設定
