@@ -45,6 +45,7 @@ chmod +x setup.sh
 ```
 
 このスクリプトは以下の処理を行います：
+
 - 必要なディレクトリの作成
 - 権限の設定
 - Dockerコンテナの起動
@@ -65,6 +66,7 @@ cp /path/to/your/data/*.csv ./data/input/csv/
 ```
 
 以下のデータ形式がサポートされています：
+
 - CSV (カンマ区切り)
 - JSON (一行ずつのJSON形式)
 
@@ -76,8 +78,8 @@ cp /path/to/your/data/*.csv ./data/input/csv/
 
 ```bash
 # クローラーを実行してデータをHive Metastoreに登録
-chmod +x run_crawler.sh
-./run_crawler.sh
+chmod +x scripts/run_crawler.sh
+./scripts/run_crawler.sh
 ```
 
 ### 3.2 登録されたテーブルの確認
@@ -90,34 +92,35 @@ docker exec hive_metastore_20250407 /opt/hive/bin/hive -e "USE test_db_20250407;
 あるいは以下のコマンドでレコードも確認できます：
 
 ```bash
-docker exec hive_metastore_20250407 /opt/hive/bin/hive -e "SELECT * FROM test_db_20250407.テーブル名 LIMIT 10;"
+docker exec hive_metastore_20250407 /opt/hive/bin/hive -e "SELECT * FROM test_db_20250407.input_ap LIMIT 10;"
 ```
 
 ### 3.3 Glueジョブの実行
 
-サンプルGlueジョブを実行して、登録されたデータを処理します：
+Glueジョブを実行するには、実行用のコンテナスクリプトを使用します：
 
 ```bash
-# テストジョブの実行
-docker exec glue20250407 python3 /home/glue_user/workspace/jobs/test_job_hive.py --database test_db_20250407 --table テーブル名
+# Glueジョブの実行
+chmod +x scripts/run_container_job.sh
+./scripts/run_container_job.sh
 ```
 
+プロンプトに従って実行するジョブ（list_ap、connection、または両方）と処理対象年月を入力します。
+
 処理結果は以下のディレクトリに出力されます：
+
 ```
-./data/output/processed_data/
+./data/output/list_ap_output/  # list_apジョブの出力
+./data/output/connection_output/  # connectionジョブの出力
 ```
 
 ### 3.4 独自のGlueジョブの実行
 
-独自のGlueジョブスクリプトを実行する場合：
+独自のGlueジョブスクリプトを実装する場合：
 
-```bash
-# スクリプトをコンテナにコピー
-docker cp your_job_script.py glue20250407:/home/glue_user/workspace/jobs/
-
-# ジョブを実行
-docker exec glue20250407 python3 /home/glue_user/workspace/jobs/your_job_script.py --database test_db_20250407 --table テーブル名
-```
+1. jobs/ディレクトリにPythonスクリプトを作成
+2. コンテナ実行スクリプトを修正してジョブを登録
+3. 実行スクリプトを使用してジョブを実行
 
 ## トラブルシューティング
 
@@ -156,7 +159,6 @@ Hiveメタストアに接続できない場合：
 ```bash
 # Hiveメタストアの状態確認
 docker exec hive_metastore_20250407 ps -ef | grep hive
-
 # 必要に応じて再起動
 docker-compose restart hive-metastore
 ```
@@ -168,7 +170,6 @@ docker-compose restart hive-metastore
 ```bash
 # コンテナと関連ネットワークを停止・削除
 docker-compose down
-
 # 生成されたデータを削除（オプション）
 rm -rf ./data ./mysql-data ./hive-data ./trino-data
 ```
@@ -186,8 +187,39 @@ rm -rf ./data ./mysql-data ./hive-data ./trino-data
 ├── crawler/ - データクローラスクリプト
 │   └── crawler_container.py - メインクローラスクリプト
 ├── jobs/ - Glueジョブスクリプト
-│   └── test_job_hive.py - 基本テストジョブ
+│   ├── list_ap_job.py - APリスト処理ジョブ
+│   └── connection_job.py - 接続データ処理ジョブ
 ├── scripts/ - 各種操作用スクリプト
+│   ├── run_crawler.sh - クローラー実行スクリプト
+│   ├── run_container_job.sh - Glueジョブ実行スクリプト
+│   └── execute_sql.sh - SQL実行スクリプト 
 ├── setup.sh - 環境セットアップスクリプト
-└── run_crawler.sh - クローラー実行スクリプト
+└── README.md - このドキュメント
+```
+
+## サンプルクエリ
+
+クロールしたテーブルに対してHiveから直接クエリを実行する例：
+
+```bash
+# input_apテーブルからAPデータを検索
+docker exec hive_metastore_20250407 /opt/hive/bin/hive -e "SELECT apid, ap名称, 設置場所名称, 都道府県, 市区町村 FROM test_db_20250407.input_ap WHERE yearmonth = 202501 LIMIT 5;"
+
+# 都道府県別のAP数を集計
+docker exec hive_metastore_20250407 /opt/hive/bin/hive -e "SELECT 都道府県, COUNT(*) as ap_count FROM test_db_20250407.input_ap GROUP BY 都道府県 ORDER BY ap_count DESC;"
+
+# 接続データを検索
+docker exec hive_metastore_20250407 /opt/hive/bin/hive -e "SELECT apid, 利用開始日時, 利用者属性, 端末属性 FROM test_db_20250407.input_connection WHERE yearmonth = 202501 LIMIT 5;"
+
+# マスターデータと結合して検索
+docker exec hive_metastore_20250407 /opt/hive/bin/hive -e "SELECT c.apid, c.利用開始日時, d.共通ログ端末属性 FROM test_db_20250407.input_connection c JOIN test_db_20250407.master_device_attribute d ON c.端末属性 = d.各社端末属性 LIMIT 5;"
+```
+
+また、SQLクエリをファイルから実行することも可能です：
+
+```bash
+# SQLファイルの作成
+echo "SELECT * FROM test_db_20250407.input_ap LIMIT 10;" > query.sql
+# SQLファイルの実行
+docker exec -i hive_metastore_20250407 /opt/hive/bin/hive -f - < query.sql
 ```
