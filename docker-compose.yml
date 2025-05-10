@@ -16,15 +16,15 @@ services:
       - "4040:4040"
       - "18080:18080"
     environment:
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-dummy}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-dummy}
-      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-dummy}
-      - AWS_REGION=${AWS_REGION:-ap-northeast-1}
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin
+      - AWS_REGION=ap-northeast-1
       - JUPYTER_ENABLE_LAB=yes
       - DISABLE_SSL=true
     command: "/home/glue_user/jupyter/jupyter_start.sh"
     depends_on:
       - hive-metastore
+      - minio
     privileged: true
 
   mysql:
@@ -76,24 +76,30 @@ services:
       - hive-metastore
     command: >
       /bin/bash -c "
-        apt-get update && 
-        apt-get install -y wget && 
         mkdir -p /data/var &&
         mkdir -p /tmp/trino &&
         chmod -R 777 /data/var &&
         chmod -R 777 /tmp/trino &&
         ln -sfn /data/var /var/trino &&
-        # Hiveコネクタをダウンロードしてインストール
-        cd /usr/lib/trino/plugin &&
-        wget -q https://repo1.maven.org/maven2/io/trino/trino-hive/434/trino-hive-434.jar &&
-        wget -q https://repo1.maven.org/maven2/io/trino/trino-hive-hadoop2/434/trino-hive-hadoop2-434.jar &&
-        wget -q https://repo1.maven.org/maven2/io/trino/trino-iceberg/434/trino-iceberg-434.jar &&
-        mkdir -p hive &&
-        mv trino-hive-434.jar hive/ &&
-        mv trino-hive-hadoop2-434.jar hive/ &&
-        mkdir -p iceberg &&
-        mv trino-iceberg-434.jar iceberg/ &&
-        sleep 30 &&
+        sleep 15 &&
         /usr/lib/trino/bin/launcher run --etc-dir /etc/trino"
     restart: on-failure
     privileged: true
+
+  minio:
+    image: minio/minio:latest
+    container_name: minio_20250407
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    volumes:
+      - ./minio-data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 10s
+      retries: 3

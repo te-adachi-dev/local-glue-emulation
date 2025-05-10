@@ -2,21 +2,49 @@ FROM amazon/aws-glue-libs:glue_libs_4.0.0_image_01
 
 USER root
 
-# 必要なツールをインストール
-RUN yum update -y && yum install -y nc procps-ng
+# 必要なパッケージのインストール
+RUN apt-get update && apt-get install -y \
+    curl \
+    wget \
+    iputils-ping \
+    net-tools \
+    vim \
+    netcat \
+    jq \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
 
-# Python3を優先的に使用するよう設定
-RUN echo 'alias python=python3' >> /home/glue_user/.bashrc
+# AWS CLIとboto3のインストール
+RUN pip3 install --upgrade awscli boto3
 
-# AWS Glue設定用のスクリプトを作成
-RUN echo 'export PYTHONIOENCODING=utf8' >> /home/glue_user/.bashrc
-RUN echo 'export PYSPARK_PYTHON=/usr/bin/python3' >> /home/glue_user/.bashrc
-RUN echo 'export DISABLE_SSL=true' >> /home/glue_user/.bashrc
-RUN echo 'export DISABLE_AWS_GLUE=true' >> /home/glue_user/.bashrc
+# タイムゾーンの設定
+RUN ln -sf /usr/share/zoneinfo/Asia/Tokyo /etc/localtime
 
-# Sparkの設定を更新
-RUN echo 'spark.hadoop.hive.metastore.client.factory.class=' >> /home/glue_user/spark/conf/spark-defaults.conf
-RUN echo 'spark.sql.warehouse.dir=/opt/hive/warehouse' >> /home/glue_user/spark/conf/spark-defaults.conf
+# 作業ディレクトリの設定と権限付与
+RUN mkdir -p /home/glue_user/data/input/csv \
+    && mkdir -p /home/glue_user/data/output \
+    && mkdir -p /home/glue_user/workspace/jobs \
+    && mkdir -p /home/glue_user/crawler \
+    && chmod -R 777 /home/glue_user
 
-# glue_userに戻す
+# AWS CLIの初期設定
+RUN mkdir -p /home/glue_user/.aws \
+    && echo "[default]\naws_access_key_id = minioadmin\naws_secret_access_key = minioadmin" > /home/glue_user/.aws/credentials \
+    && echo "[default]\nregion = ap-northeast-1\ns3 =\n    signature_version = s3v4\n    addressing_style = path" > /home/glue_user/.aws/config \
+    && chown -R glue_user:glue_user /home/glue_user/.aws
+
+# 環境変数を設定
+ENV AWS_ACCESS_KEY_ID=minioadmin \
+    AWS_SECRET_ACCESS_KEY=minioadmin \
+    AWS_DEFAULT_REGION=ap-northeast-1
+
+# bashrcに環境変数を追加
+RUN echo 'export AWS_ACCESS_KEY_ID=minioadmin' >> /home/glue_user/.bashrc \
+    && echo 'export AWS_SECRET_ACCESS_KEY=minioadmin' >> /home/glue_user/.bashrc \
+    && echo 'export AWS_DEFAULT_REGION=ap-northeast-1' >> /home/glue_user/.bashrc
+
 USER glue_user
+WORKDIR /home/glue_user/workspace
+
+# JupyterLabをデフォルトで起動するよう設定
+ENV JUPYTER_ENABLE_LAB=yes
