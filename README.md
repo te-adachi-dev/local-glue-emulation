@@ -315,7 +315,7 @@ docker logs trino_20250407
 docker-compose down
 
 # 生成されたデータを削除（オプション）
-rm -rf ./data/output ./mysql-data ./hive-data ./trino-data ./minio-data
+sudo rm -rf ./data/output ./mysql-data ./hive-data ./trino-data ./minio-data
 ```
 
 ## 8. 高度な使用方法
